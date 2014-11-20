@@ -119,8 +119,8 @@ z := "http://friendfeed-api.com/v2/feed/" + tgt + "?num=10"
 req2.SetBasicAuth(u,pw)
 resp2, err2 := client.Do(req2)
     if err2 != nil {
-        http.Error(ww, err2.Error(), http.StatusInternalServerError)
-	return 2
+//        http.Error(ww, err2.Error(), http.StatusInternalServerError)
+    	return resp2.StatusCode
     }
     if resp2.Status == "401 Unauthorized" {
     return 1
