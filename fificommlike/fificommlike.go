@@ -3,6 +3,7 @@ package hello
 import (
     "fmt"
     "time"
+    "sort"
     "net/http"
     "appengine"
     "appengine/urlfetch"
@@ -14,12 +15,16 @@ import (
 func init() {
     http.HandleFunc("/", root)
     http.HandleFunc("/help", help)
+    http.HandleFunc("/read", readusr)
+    http.HandleFunc("/contusr", contusr)
+    http.HandleFunc("/class", class)
     http.HandleFunc("/sign", sign)
     http.HandleFunc("/robots.txt", robots)
 }
 
 func root(w http.ResponseWriter, r *http.Request) {
     fmt.Fprint(w, mioForm)
+    fmt.Fprint(w, greetings)
 }
 
 const mioForm = `
@@ -31,14 +36,22 @@ const mioForm = `
 	<table>
       <tr><td>Username FF:</td><td><input type="text" name="user"></td></tr>
       <tr><td>Remote Key FF:</td><td><input type="text" name="pw"></td></tr>
-      <tr><td colspan=2><a href="http://friendfeed.com/remotekey" target="_blank">Se non ce l&apos;hai, ottieni la tua Remote Key qui</a></td></tr>
+      <tr><td colspan=2>(Se non ce l&apos;hai, ottieni la tua Remote Key <a href="http://friendfeed.com/remotekey" target="_blank">qui</a>)</td></tr>
       <tr><td>Target User:</td><td><input type="text" name="tgt"></td></tr>
-	</table>
+      </table>
+<p>Altre opzioni, che <b>non</b> richiedono Username n&eacute; Remote key: 
+      <ul> 
+      <li><a href="/read">Lista dei Target User gi&agrave; presenti in  archivio</a>
+      <li><a href="/class">Classifica dei Target User gi&agrave; presenti in  archivio</a>
+      </ul>
       <p><div><input type="submit" value="Invio">
       <p><b>Hai letto le istruzioni?</b> <a href="/help">Help/Info</a></div>
 <p><img src="https://developers.google.com/appengine/images/appengine-silver-120x30.gif" 
 alt="Powered by Google App Engine" />
     </form>
+`
+
+const greetings = `
 <hr><div><b>Disclaimer:</b> Questa applicazione utilizza un servizio <i>gratuito</i> soggetto a <b>limitazioni</b>.<br>Il programma viene reso disponibile <b>senza alcuna garanzia</b> di corretto funzionamento:<br>utilizzatelo liberamente a vostro rischio.</div>
 <p><hr><div>Grazie per aver usato questo programma.<br>
 Eventuali critiche o suggerimenti possono essere diretti a:
@@ -55,6 +68,11 @@ const helpForm = `
     <h1>Cruscotto FF</h1>
 <div>Questa App visualizza un cruscotto con informazioni relative a:
 <ul><li>numero di commenti<li> numero di like</ul>sugli <b>ultimi 10 post del proprio Feed<br>o del Feed di qualcuno a cui siamo iscritti</b> (Target User) su FriendFeed.</div>
+<p>
+<div>Si possono anche visualizzare i dati (numero dei commenti e like)<br>
+come <b>Lista</b> dei <a href=/read>Target User gi&agrave; presenti in archivio</a><br>
+e visualizzare una <b>Classifca</b> per <a href=/class>numero di commenti</a> o <a href=class?mode=1>like</a><br>
+sugli ultimi 10 post di ogni Target User.</div>
 <hr>
 Per ulteriori info:
 <ul>
@@ -109,6 +127,7 @@ return
 
 func controlla(u string, pw string, tgt string, ww http.ResponseWriter, rr *http.Request) int {
 c := appengine.NewContext(rr)
+
     client := urlfetch.Client(c)
 z := "http://friendfeed-api.com/v2/feed/" + tgt + "?num=10"
  req2, err2 := http.NewRequest("GET", z, nil)
@@ -138,7 +157,7 @@ body, err4 := ioutil.ReadAll(resp2.Body)
 resp2.Body.Close()
 
 var animals Ani
-
+animals.Entries = nil
 	err3 := json.Unmarshal(body, &animals)
 	if err3 != nil {
 		fmt.Fprintf(ww, "Unmarshal error: %v\n", err3)
@@ -170,7 +189,7 @@ fmt.Fprintf(ww, "<hr><div><b>Tip &amp; Tricks:</b> <i>Errori \"Over Quota\"? Rip
     }
 
 var zz []*Utente
-
+zz = nil
 qq := datastore.NewQuery("Utente").Filter("Id =", tgt).Order("-Lastaccess").Limit(10)
 _, err6 := qq.GetAll(c, &zz)
 	if err6 != nil {
@@ -184,8 +203,141 @@ if len(zz) < 2 {
 	fmt.Fprintf(ww, gaugeForm2, zz[yy].Lastaccess.Format(time.ANSIC), zz[yy].Commts, zz[yy].Liks)
   }
 }
-fmt.Fprintf(ww, gaugeForm3, tgt, time.Now().Format(time.ANSIC), u, pw, tgt)
+fmt.Fprintf(ww, gaugeForm3, tgt, time.Now().Format(time.ANSIC))
 return 0
+}
+
+func readusr(w http.ResponseWriter, r *http.Request) {
+
+var zz []*Utente
+zz = nil
+c := appengine.NewContext(r)
+q := datastore.NewQuery("Utente").Project("Id").Distinct()
+_, err6 := q.GetAll(c, &zz)
+	if err6 != nil {
+		fmt.Fprintf(w, "err6=%v\n",err6)
+		return
+	}
+fmt.Fprintf(w, "<html><body><h1>Lista dei Target User</h1><h2>presenti in archivio</h2><blockquote>")
+for k:=0 ; k < len(zz); k++ {
+	x := zz[k].Id
+        z := "http://friendfeed-api.com/v2/picture/" + x + "?size=small"
+	fmt.Fprintf(w, "<a href=/contusr?tgt=%s>", x)
+        fmt.Fprintf(w,"<img src=%s>&nbsp;",z)
+	fmt.Fprintf(w, "%s</a><br>", x)
+}
+fmt.Fprintf(w, "</blockquote>")
+fmt.Fprintf(w, greetings)
+}
+
+func contusr(ww http.ResponseWriter, rr *http.Request) {
+
+    tgt := rr.FormValue("tgt")
+if tgt == "" {
+return
+}
+c := appengine.NewContext(rr)
+
+
+var zz []*Utente
+zz = nil
+qq := datastore.NewQuery("Utente").Filter("Id =", tgt).Order("-Lastaccess").Limit(10)
+_, err6 := qq.GetAll(c, &zz)
+	if err6 != nil {
+		fmt.Fprintf(ww, "err6=%v\n",err6)
+		return
+	}
+
+if len(zz) < 1 {
+	fmt.Fprintf(ww, "<html><body><h2>Target User: %s - dati non presenti</h2><a href=/read>Back</a></body></html>", tgt)
+	return
+}
+
+nn := zz[0].Commts
+mm := zz[0].Liks
+
+fmt.Fprintf(ww, gaugeForm1, nn, mm)
+
+if len(zz) < 2 {
+	fmt.Fprintf(ww, gaugeForm2, "Never", 0, 0)
+} else {
+  for yy := (len(zz)-1); yy >= 0; yy-- {
+	fmt.Fprintf(ww, gaugeForm2, zz[yy].Lastaccess.Format(time.ANSIC), zz[yy].Commts, zz[yy].Liks)
+  }
+}
+fmt.Fprintf(ww, gaugeForm3, tgt, time.Now().Format(time.ANSIC))
+return
+}
+
+// SORT
+type Utenti []*Utente
+type ByComm struct { Utenti }
+type ByLike struct { Utenti }
+type ByAll struct { Utenti }
+
+func (s Utenti) Len() int {
+return len(s)
+}
+
+func (s Utenti) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
+func (s ByComm) Less(i, j int) bool { return ((s.Utenti[i].Commts*1000)+s.Utenti[i].Liks) > ((s.Utenti[j].Commts*1000)+s.Utenti[j].Liks) }
+func (s ByLike) Less(i, j int) bool { return ((s.Utenti[i].Liks*1000)+s.Utenti[i].Commts) > ((s.Utenti[j].Liks*1000)+s.Utenti[j].Commts) }
+func (s ByAll) Less(i, j int) bool { return (s.Utenti[i].Liks + s.Utenti[i].Commts)*1000+s.Utenti[i].Commts > (s.Utenti[j].Liks + s.Utenti[j].Commts)*1000+s.Utenti[j].Commts }
+
+func class(ww http.ResponseWriter, rr *http.Request) {
+
+mod := rr.FormValue("mode")
+
+c := appengine.NewContext(rr)
+
+var zz Utenti
+zz = nil
+qq := datastore.NewQuery("Utente").Order("Id").Order("-Lastaccess")
+_, err6 := qq.GetAll(c, &zz)
+	if err6 != nil {
+		fmt.Fprintf(ww, "err6=%v\n",err6)
+		return
+	}
+
+prev := ""
+for k:=0 ; k < len(zz); k++ {
+   x := zz[k].Id
+   if x == prev {
+	zz[k].Commts = (-1)
+   }
+   prev = x
+}
+
+per := ""
+switch mod {
+case "0":
+	sort.Sort(ByComm{zz})
+	per = "commenti</b> (ordina per: <a href=/class?mode=1>like</a>, <a href=/class?mode=2>commenti+like</a>)"
+case "1":
+	sort.Sort(ByLike{zz})
+	per = "like</b> (ordina per: <a href=/class?mode=0>commenti</a>, <a href=/class?mode=2>commenti+like</a>)"
+case "2":
+	sort.Sort(ByAll{zz})
+	per = "commenti+like</b> (ordina per: <a href=/class?mode=0>commenti</a>, <a href=/class?mode=1>like</a>)"
+default:
+	sort.Sort(ByComm{zz})
+	per = "commenti</b> (ordina per: <a href=/class?mode=1>like</a>, <a href=/class?mode=2>commenti+like</a>)"
+}
+
+fmt.Fprintf(ww, "<html><body><h1>Classifica dei Target User</h1><h2>presenti in archivio</h2>ordinati per <b>%s<blockquote><table><tr><th>Comm</th><th>Like</th><th>All</th><th>Target User</th></tr>", per)
+for k:=0 ; k < len(zz); k++ {
+   x := zz[k].Id
+   if zz[k].Commts >= 0 {
+	fmt.Fprintf(ww, "<tr><td>%d</td><td>%d</td><td>%d</td><td>",
+		zz[k].Commts, zz[k].Liks, (zz[k].Commts+zz[k].Liks))
+        z := "http://friendfeed-api.com/v2/picture/" + x + "?size=small"
+	fmt.Fprintf(ww, "<a href=/contusr?tgt=%s>", x)
+        fmt.Fprintf(ww,"<img src=%s>&nbsp;",z)
+	fmt.Fprintf(ww, "%s</a></td></tr>", x)
+   }
+}
+fmt.Fprintf(ww, "</table></blockquote>")
+fmt.Fprintf(ww, greetings)
 }
 
 const gaugeForm1 = `
@@ -247,7 +399,7 @@ const gaugeForm3 = `
 <h2>Agg.to: %s UTC</h2>
     <div id="visualization" style="width: 800px; height: 400px;"></div>
 </div>
-<div><a href=/sign?user=%s&pw=%s&tgt=%s>Refresh</a>
+<div><a href=/read>Lista Target User</a>
   <br><a href=/>Home</a></div>
   </body>
 </html>
