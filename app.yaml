@@ -7,6 +7,19 @@ handlers:
 - url: /images
   static_dir: images
 
+- url: /refreshdata
+  script: _go_app
+  login: admin
+
+- url: /purga
+  script: _go_app
+  login: admin
+
+- url: /pg
+  script: _go_app
+  login: admin
+
 - url: /.*
   script: _go_app
+  secure: never
 

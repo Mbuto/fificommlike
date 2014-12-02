@@ -1,5 +1,9 @@
 package hello
 
+const acc_id = `YOUR-LOGIN`
+const acc_key = `YOUR-REMOTEKEY`
+
+
 import (
     "fmt"
     "time"
@@ -20,6 +24,9 @@ func init() {
     http.HandleFunc("/class", class)
     http.HandleFunc("/sign", sign)
     http.HandleFunc("/robots.txt", robots)
+    http.HandleFunc("/refreshdata", refreshdata)
+    http.HandleFunc("/purga", purga)
+    http.HandleFunc("/pg", pg)
 }
 
 func root(w http.ResponseWriter, r *http.Request) {
@@ -35,7 +42,7 @@ const mioForm = `
     <form action="/sign" method="post">
 	<table>
       <tr><td>Username FF:</td><td><input type="text" name="user"></td></tr>
-      <tr><td>Remote Key FF:</td><td><input type="text" name="pw"></td></tr>
+      <tr><td>Remote Key FF:</td><td><input type="password" name="pw"></td></tr>
       <tr><td colspan=2>(Se non ce l&apos;hai, ottieni la tua Remote Key <a href="http://friendfeed.com/remotekey" target="_blank">qui</a>)</td></tr>
       <tr><td>Target User:</td><td><input type="text" name="tgt"></td></tr>
       </table>
@@ -96,6 +103,7 @@ Id string
 Lastaccess time.Time
 Commts int
 Liks int
+Name string
 }
 
 func sign(w http.ResponseWriter, r *http.Request) {
@@ -108,7 +116,7 @@ if g == "" {
     g = s
 }
 
-kk := controlla(s, t, g, w, r)
+kk := controlla(0,s, t, g, w, r)
 if kk > 1 {
 	fmt.Fprintf(w, "<html><body><br><br><br>")
 	fmt.Fprintf(w, "<b> ATTENZIONE! errore FriendFeed (%d) </b>", kk)
@@ -125,7 +133,7 @@ if kk > 0 {
 return
 }
 
-func controlla(u string, pw string, tgt string, ww http.ResponseWriter, rr *http.Request) int {
+func controlla(flg int, u string, pw string, tgt string, ww http.ResponseWriter, rr *http.Request) int {
 c := appengine.NewContext(rr)
 
     client := urlfetch.Client(c)
@@ -139,18 +147,26 @@ req2.SetBasicAuth(u,pw)
 resp2, err2 := client.Do(req2)
     if err2 != nil {
 //        http.Error(ww, err2.Error(), http.StatusInternalServerError)
-    	return resp2.StatusCode
+	if flg == 0 {
+    		return resp2.StatusCode
+    	} else {
+		return 4
+	}
     }
     if resp2.Status == "401 Unauthorized" {
     return 1
     }
     if resp2.Status != "200 OK" {
 //    fmt.Fprintf(ww, "client.Do ERR:%v ", resp2)
-    return resp2.StatusCode
+	if flg == 0 {
+    		return resp2.StatusCode
+    	} else {
+		return 5
+	}
     }
 body, err4 := ioutil.ReadAll(resp2.Body)
     if err4 != nil {
-	fmt.Fprintf(ww, "OHHO Err.ReadAll %v\n", err4)
+//	fmt.Fprintf(ww, "OHHO Err.ReadAll %v\n", err4)
 	return 1
     }
 
@@ -160,7 +176,7 @@ var animals Ani
 animals.Entries = nil
 	err3 := json.Unmarshal(body, &animals)
 	if err3 != nil {
-		fmt.Fprintf(ww, "Unmarshal error: %v\n", err3)
+//		fmt.Fprintf(ww, "Unmarshal error: %v\n", err3)
 	return 1
 	}
 nn := 0
@@ -178,22 +194,27 @@ for kk := 0; kk < len(animals.Entries); kk++ {
   }
 }
 
+if (flg == 0) {
 fmt.Fprintf(ww, gaugeForm1, nn, mm)
+}
 
-uu := Utente{tgt,time.Now(),nn,mm}
+uu := Utente{tgt,time.Now(),nn,mm,animals.Name}
 _, err5 := datastore.Put(c, datastore.NewIncompleteKey(c, "Utente", nil), &uu)
     if err5 != nil {
+if (flg == 0) {
 	fmt.Fprintf(ww, "<p>err5=%v\n",err5)
 fmt.Fprintf(ww, "<hr><div><b>Tip &amp; Tricks:</b> <i>Errori \"Over Quota\"? Riprovate la mattina dopo le 9:00</i> </div>")
+}
 	return 1
     }
 
+if (flg == 0) {
 var zz []*Utente
 zz = nil
 qq := datastore.NewQuery("Utente").Filter("Id =", tgt).Order("-Lastaccess").Limit(10)
 _, err6 := qq.GetAll(c, &zz)
 	if err6 != nil {
-		fmt.Fprintf(ww, "err6=%v\n",err6)
+//		fmt.Fprintf(ww, "err6=%v\n",err6)
 		return 1
 	}
 if len(zz) < 2 {
@@ -204,12 +225,14 @@ if len(zz) < 2 {
   }
 }
 fmt.Fprintf(ww, gaugeForm3, tgt, time.Now().Format(time.ANSIC))
+}
 return 0
 }
 
 func readusr(w http.ResponseWriter, r *http.Request) {
 
 var zz []*Utente
+var zzz []*Utente
 zz = nil
 c := appengine.NewContext(r)
 q := datastore.NewQuery("Utente").Project("Id").Distinct()
@@ -220,11 +243,24 @@ _, err6 := q.GetAll(c, &zz)
 	}
 fmt.Fprintf(w, "<html><body><h1>Lista dei Target User</h1><h2>presenti in archivio</h2><blockquote>")
 for k:=0 ; k < len(zz); k++ {
+	zzz = nil
 	x := zz[k].Id
+qq := datastore.NewQuery("Utente").Filter("Id =", x).Order("-Lastaccess").Limit(1)
+_, err7 := qq.GetAll(c, &zzz)
+	if err7 != nil {
+		fmt.Fprintf(w, "err7=%v\n",err7)
+		return
+	}
+	y := zzz[0].Name
+	if y == "" {
+		y = zzz[0].Id
+	}
+	m := zzz[0].Commts
+	n := zzz[0].Liks
         z := "http://friendfeed-api.com/v2/picture/" + x + "?size=small"
 	fmt.Fprintf(w, "<a href=/contusr?tgt=%s>", x)
         fmt.Fprintf(w,"<img src=%s>&nbsp;",z)
-	fmt.Fprintf(w, "%s</a><br>", x)
+	fmt.Fprintf(w, "%s: %d comm, %d like</a><br>", y, m, n)
 }
 fmt.Fprintf(w, "</blockquote>")
 fmt.Fprintf(w, greetings)
@@ -284,6 +320,9 @@ func (s ByComm) Less(i, j int) bool { return ((s.Utenti[i].Commts*1000)+s.Utenti
 func (s ByLike) Less(i, j int) bool { return ((s.Utenti[i].Liks*1000)+s.Utenti[i].Commts) > ((s.Utenti[j].Liks*1000)+s.Utenti[j].Commts) }
 func (s ByAll) Less(i, j int) bool { return (s.Utenti[i].Liks + s.Utenti[i].Commts)*1000+s.Utenti[i].Commts > (s.Utenti[j].Liks + s.Utenti[j].Commts)*1000+s.Utenti[j].Commts }
 
+const lunome = 14
+// lunghezza nome visualizzato
+
 func class(ww http.ResponseWriter, rr *http.Request) {
 
 mod := rr.FormValue("mode")
@@ -320,20 +359,46 @@ case "2":
 	sort.Sort(ByAll{zz})
 	per = "commenti+like</b> (ordina per: <a href=/class?mode=0>commenti</a>, <a href=/class?mode=1>like</a>)"
 default:
-	sort.Sort(ByComm{zz})
-	per = "commenti</b> (ordina per: <a href=/class?mode=1>like</a>, <a href=/class?mode=2>commenti+like</a>)"
+	sort.Sort(ByAll{zz})
+	per = "commenti+like</b> (ordina per: <a href=/class?mode=0>commenti</a>, <a href=/class?mode=1>like</a>)"
 }
 
-fmt.Fprintf(ww, "<html><body><h1>Classifica dei Target User</h1><h2>presenti in archivio</h2>ordinati per <b>%s<blockquote><table><tr><th>Comm</th><th>Like</th><th>All</th><th>Target User</th></tr>", per)
+fmt.Fprintf(ww, "<html><body><h1>Classifica dei Target User</h1><h2>presenti in archivio</h2>ordinati per <b>%s<blockquote><table><tr><th>Comm</th><th>Like</th><th>All</th><th>Target User</th><th colspan=2>Posizione in questa classifica</th></tr>", per)
+
+j := 1
 for k:=0 ; k < len(zz); k++ {
    x := zz[k].Id
    if zz[k].Commts >= 0 {
+   	i := ""
+   	if j > 100 {
+	i = "<img src=/images/poveri.png width=25 height=25 valign=middle> Poveri Cristi"
+   	}
+   	if j == 1 {
+	i = "<img src=/images/bell.png width=25 height=25 valign=middle> Winner!"
+   	}
+   	if (j > 1) && (j <= 10) {
+	i = "<img src=/images/run.png width=25 height=25 valign=middle> Top Ten"
+   	}
+   	if (j > 10) && (j <= 50) {
+	i = "<img src=/images/50s.png width=25 height=25 valign=middle> Top 50"
+   	}
+   	if (j > 50) && (j <= 100) {
+	i = "<img src=/images/mezzi.png width=25 height=25 valign=middle> Mediani"
+   	}
+	y := zz[k].Name
+	if len(y) > (lunome + 1) {
+		y = zz[k].Name[:lunome] + "..."
+        }
+	if y == "" {
+		y = zz[k].Id
+	}
 	fmt.Fprintf(ww, "<tr><td>%d</td><td>%d</td><td>%d</td><td>",
 		zz[k].Commts, zz[k].Liks, (zz[k].Commts+zz[k].Liks))
         z := "http://friendfeed-api.com/v2/picture/" + x + "?size=small"
 	fmt.Fprintf(ww, "<a href=/contusr?tgt=%s>", x)
-        fmt.Fprintf(ww,"<img src=%s>&nbsp;",z)
-	fmt.Fprintf(ww, "%s</a></td></tr>", x)
+        fmt.Fprintf(ww,"<img src=%s valign=middle>&nbsp;",z)
+	fmt.Fprintf(ww, "<span valign=middle>%s</span></a></td><td>%d.</td><td>%s</td></tr>", y, j, i)
+	j++
    }
 }
 fmt.Fprintf(ww, "</table></blockquote>")
@@ -441,6 +506,97 @@ func robots(w http.ResponseWriter, r *http.Request) {
 fmt.Fprintf(w, "User-agent: *\nDisallow: /\n")
 }
 
+
+type Purga struct {
+	Id string
+	Err int
+}
+
+
+func refreshdata(w http.ResponseWriter, r *http.Request) {
+var zz []*Utente
+// var zzz []*Utente
+
+zz = nil
+c := appengine.NewContext(r)
+q := datastore.NewQuery("Utente").Project("Id").Distinct()
+_, err6 := q.GetAll(c, &zz)
+	if err6 != nil {
+		fmt.Fprintf(w, "err6=%v\n",err6)
+		return
+	}
+
+for k:=0 ; k < len(zz); k++ {
+	i := zz[k].Id
+	j := controlla(1,acc_id,acc_key,i,w,r)
+	if j != 0 {
+	pp := Purga{i, j}
+	datastore.Put(c, datastore.NewIncompleteKey(c, "Purga", nil), &pp)
+	}
+}
+
+}
+
+func purga(w http.ResponseWriter, r *http.Request) {
+var zz []*Purga
+c := appengine.NewContext(r)
+q := datastore.NewQuery("Purga")
+_, err6 := q.GetAll(c, &zz)
+	if err6 != nil {
+		fmt.Fprintf(w, "err6=%v\n",err6)
+		return
+	}
+fmt.Fprintf(w, "<html><body><h2>Lista Id con errori</h2><ul>")
+for k:=0 ; k < len(zz); k++ {
+fmt.Fprintf(w, "<li><a href=/pg?tgt=%s>%s</a> %d", zz[k].Id, zz[k].Id, zz[k].Err)
+}
+fmt.Fprintf(w, "</ul>Tot. %d Ids</body></html>", len(zz))
+}
+
+func pg(w http.ResponseWriter, r *http.Request) {
+    g := r.FormValue("tgt")
+
+cc := appengine.NewContext(r)
+
+qq := datastore.NewQuery("Utente").Filter("Id =", g).Limit(100).KeysOnly()
+
+fmt.Fprintf(w, "<html><body><pre>")
+l := 0
+for  {
+
+zzz, err9 := qq.GetAll(cc, nil)
+if err9 != nil {
+        fmt.Fprintf(w, "GetAll err=%v\n",err9)
+return
+}
+
+fmt.Fprintf(w, "PG: zzz: %v\n", zzz)
+fmt.Fprintf(w, "PG: User %s deleting %d records\n", g, len(zzz))
+if len(zzz) == 0 {
+        break
+}
+
+err8 := datastore.DeleteMulti(cc, zzz)
+if err8 != nil {
+	fmt.Fprintf(w, "DeleteMulti err=%v\n",err8)
+	return
+	}
+l += len(zzz)
+zzz = nil
+}
+fmt.Fprintf(w, "PG: User %s deleted %d records\n", g, l)
+
+qq2 := datastore.NewQuery("Purga").Filter("Id =", g).KeysOnly()
+zzz2, _ := qq2.GetAll(cc, nil)
+err82 := datastore.DeleteMulti(cc, zzz2)
+if err82 != nil {
+	fmt.Fprintf(w, "DeleteMulti err=%v\n",err82)
+	return
+	}
+
+fmt.Fprintf(w, "</pre><a href=/purga>torna</a></body></html>")
+}
+
 type Fromt struct {
 Id string
 }
@@ -455,6 +611,7 @@ Likes []Commt
 }
 
 type Ani struct {
+Name string
 Entries []Entt
 }
 
