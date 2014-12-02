@@ -1,0 +1,4 @@
+cron:
+- description: refresh data daily
+  url: /refreshdata
+  schedule: every 24 hours
