@@ -1,6 +1,8 @@
 fificommlike
 ============
 
+NOTICE: FriendFeed is no longer available, so this app has been *DISABLED*. Code kept for historical review only.
+
 Number of comments and likes for FriendFeed Users - Graphic View
 
 This simple application is for FriendFeed users (www.friendfeed.com). It displays in graphic form the number of comments and likes received by the specified user (Target User), and a little history of the same data. It requires authorized access to friendfeed.com.
